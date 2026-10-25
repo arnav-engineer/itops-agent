@@ -394,3 +394,4 @@ Here, renamed to "notes.md". The following changes are done to the original data
 Finalized on deepseek-r1:8b via Ollama
 
 * token_counter.ipynb shall be used to count the tokens. 
+* deepseek-r1: 8b is based on "deepseek-ai/DeepSeek-R1-Distill-Llama-8B" and uses 
