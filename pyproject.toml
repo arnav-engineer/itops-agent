@@ -7,7 +7,10 @@ authors = [
     { name = "arnav-engineer", email = "arnav.gupta.9404@gmail.com" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "ipykernel>=7.4.0",
+    "pandas>=3.1.0",
+]
 
 [project.scripts]
 itops-agent = "itops_agent:main"
