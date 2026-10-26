@@ -34,7 +34,7 @@ All preprocessing was carried out in `annotation.ipynb`:
    - `complexity`: Target classification label (`single_hop`, `multi_hop`, `parallel_hop`).
 6. **Deduplication**:
    - Verified duplicate ticket texts via `df["ticket"].duplicated().sum()`. Exactly 0 duplicates found.
-7. **Cleaned Dataset Size**: Exactly **7,343 rows**.
+7. **Cleaned Dataset Size**: Exactly **7,343 rows** (0 nulls, 0 blanks).
 
 ---
 
@@ -55,7 +55,7 @@ uvx llmfit recommend --use-case reasoning
 - **Model Selected**: `deepseek-r1:8b` via Ollama.
 - **Base Architecture**: Based on `deepseek-ai/DeepSeek-R1-Distill-Llama-8B` (8.0B parameters).
 - **Rationale**: Optimal hardware fit for 8GB VRAM (utilizing ~5.0 GB VRAM, leaving ~2.6 GB headroom for KV cache).
-- **Token Budget**: Verified using `AutoTokenizer` in `token_counter.ipynb`. The rules file `annotation_rules.md` (~900 tokens) comfortably fits within the model's context window.
+- **System Prompt Budget**: Verified using `AutoTokenizer` in `token_counter.ipynb`. The rules file `annotation_rules.md` (1,033 tokens) comfortably fits within the model's context window.
 
 ---
 
@@ -72,20 +72,47 @@ All **7,343 tickets** were classified into three operational complexity classes 
 - **Inference Runtime**: Ollama local server (`http://localhost:11434/api/chat`).
 - **Sampling Temperature**: `0.0` (fully deterministic).
 - **Format**: Structured JSON output enforcing `{"reasoning": "...", "label": "..."}`.
-- **Output Files**:
-  - `annotated_dataset.csv`: Progress checkpoint export.
-  - `final.csv`: Production dataset containing `['type', 'ticket', 'complexity']` across all 7,343 rows.
+- **Primary Production Dataset**: `annotated_dataset.csv` containing `['type', 'ticket', 'complexity']` across all 7,343 rows.
+
+### Final Production Class Distribution
+| Operational Class | Sample Count | Percentage (%) | Operational Meaning |
+| :--- | :---: | :---: | :--- |
+| **`multi_hop`** | **4,828** | **65.75%** | Iterative diagnostic workflows, multi-step triage |
+| **`single_hop`** | **2,245** | **30.57%** | Deterministic atomic actions (resets, queries) |
+| **`parallel_hop`** | **270** | **3.68%** | Multi-target concurrent execution tasks |
+| **Total** | **7,343** | **100.0%** | Production-ready annotated corpus |
 
 ---
 
-## 5. Dataset Splitting Strategy for Fine-Tuning
+## 5. Token Distribution & Context Window Analysis
 
-To train, tune, and evaluate the final production classifier on the 7,343 tickets, a **Stratified 80 / 10 / 10 Split** is established:
+Empirical token statistics computed across all 7,343 samples in `token_counter.ipynb` for both the annotation model (`deepseek-ai/DeepSeek-R1-Distill-Llama-8B`, 128k vocabulary) and downstream classifier model (`convaiinnovations/laya`, ModernBERT backbone, 50k vocabulary):
+
+| Token Metric | DeepSeek-R1 (8B) | Laya (ModernBERT) | Engineering Interpretation |
+| :--- | :---: | :---: | :--- |
+| **Total Corpus Tokens** | **552,016** | **595,328** | Total dataset token volume |
+| **Mean Length (Average)** | **75.18** tokens | **81.07** tokens | Compact real-world IT ticket syntax |
+| **Standard Deviation ($\sigma$)** | 30.79 | 31.69 | Consistent ticket length variance |
+| **Median ($p_{50}$)** | **77.0** tokens | **83.0** tokens | Typical operational ticket length |
+| **Interquartile Range ($p_{25} - p_{75}$)** | 50.0 – 102.0 | 55.0 – 108.0 | Core 50% distribution bounds |
+| **95th Percentile ($p_{95}$)** | **118.0** tokens | **126.0** tokens | 95% of tickets are $\le 126$ tokens |
+| **99th Percentile ($p_{99}$)** | **129.0** tokens | **138.0** tokens | Outlier tail threshold |
+| **Minimum Ticket Length** | **10** tokens | **12** tokens | Shortest operational query |
+| **Maximum Ticket Length** | **187** tokens | **200** tokens | Longest operational ticket in dataset |
+| **Model Context Limit** | **131,072** (128k) | **512** tokens | Hardware/architecture window bounds |
+| **Max Context Utilization** | **0.143%** | **39.06%** | **100% Fit, Zero Truncation ($\Delta = 0$)** |
+
+> **Context Feasibility Note**: Laya's maximum sequence length of 512 tokens accommodates the entire corpus with **0 truncated tokens** (maximum ticket is only 200 tokens, leaving over 312 tokens of headroom for schema instructions and decision criteria).
+
+---
+
+## 6. Dataset Partitioning Strategy for Downstream Training
+
+To train, tune, and evaluate downstream classifiers on the 7,343 tickets, a **Stratified 80 / 10 / 10 Split** is established:
 
 | Split | Percentage | Sample Count | Primary Purpose |
-| :--- | :--- | :--- | :--- |
-| **Train Set** | **80%** | **~5,874** | Model weight updates and gradient backpropagation. Balanced class weighting applied. |
-| **Validation Set** | **10%** | **~734** | Epoch-by-epoch evaluation, learning rate tuning, and early stopping checkpoint selection. |
-| **Test Set** | **10%** | **~735** | Held-out unbiased final evaluation. Never touched during training or hyperparameter tuning. |
-
-> **Note on Stratification**: Due to the natural class distribution (where `parallel_hop` is a minority class), all splits must use stratified sampling to ensure identical class proportions across train, validation, and test sets.
+| :--- | :---: | :---: | :--- |
+| **Train Set** | **80%** | **5,873** | Model weight updates and policy gradient optimization. Balanced class weighting applied. |
+| **Validation Set** | **10%** | **735** | Epoch-by-epoch evaluation, learning rate tuning, and temperature calibration. |
+| **Test Set** | **10%** | **735** | Held-out unbiased benchmark evaluation. Never touched during training or hyperparameter tuning. |
+| **Total** | **100%** | **7,343** | Fully stratified across `single_hop`, `multi_hop`, and `parallel_hop`. |
