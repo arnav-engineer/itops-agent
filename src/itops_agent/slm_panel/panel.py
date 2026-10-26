@@ -102,6 +102,9 @@ class PanelConfig:
     critic_temperature: float = 0.0
     critic_timeout: float = 30.0
 
+    # Fallback to LLM on Critic Rejection
+    enable_llm_fallback: bool = True
+
     # Prompt paths
     base_dir: Path = field(default_factory=lambda: Path(__file__).resolve().parent)
     generator_prompt_file: str = "generator_prompt.md"
@@ -142,6 +145,8 @@ class PanelResponse:
     ticket_type: Optional[str] = None
     draft_resolution: Optional[str] = None
     critic: Optional[CriticEvaluation] = None
+    fallback_triggered: bool = False
+    fallback_response: Optional[Any] = None
     final_output: Optional[str] = None
     total_latency_ms: float = 0.0
     error: Optional[str] = None
@@ -431,6 +436,7 @@ class SLMPanel:
                 ticket_type=ticket_type,
                 draft_resolution=draft_resolution,
                 critic=critic_result,
+                fallback_triggered=False,
                 final_output=draft_resolution,
                 total_latency_ms=total_time,
             )
@@ -440,21 +446,78 @@ class SLMPanel:
                 f"[SLM Panel Decision: FAIL] Critic rejected draft resolution! "
                 f"Reason: {critic_result.reason}"
             )
-            logger.warning(
-                "[Autonomous Safety Circuit Breaker] Execution halted. Response withheld from user."
-            )
-            logger.warning(f"Total pipeline latency: {total_time:.1f} ms")
-            logger.warning("=" * 70)
 
-            return PanelResponse(
-                success=False,
-                query=query,
-                ticket_type=ticket_type,
-                draft_resolution=draft_resolution,
-                critic=critic_result,
-                final_output=None,
-                total_latency_ms=total_time,
+            # Check if Tier-2 LLM fallback is enabled
+            if not self.config.enable_llm_fallback:
+                logger.warning(
+                    "[Autonomous Safety Circuit Breaker] Fallback disabled. Execution halted. Response withheld from user."
+                )
+                logger.warning(f"Total pipeline latency: {total_time:.1f} ms")
+                logger.warning("=" * 70)
+
+                return PanelResponse(
+                    success=False,
+                    query=query,
+                    ticket_type=ticket_type,
+                    draft_resolution=draft_resolution,
+                    critic=critic_result,
+                    fallback_triggered=False,
+                    final_output=None,
+                    total_latency_ms=total_time,
+                )
+
+            # Redirection to Tier-2 LLM Panel
+            logger.info(
+                "[Escalation Triggered] Redirecting failed query to Tier-2 LLM (Nemotron 3 Ultra via OpenRouter)..."
             )
+
+            try:
+                from itops_agent.llm_panel import process_multi_hop
+            except ImportError:
+                from ..llm_panel import process_multi_hop
+
+            llm_res = process_multi_hop(query=query)
+            end_time = (time.perf_counter() - overall_start) * 1000.0
+
+            if llm_res.success:
+                logger.info("=" * 70)
+                logger.info(
+                    f"[LLM Fallback SUCCESS] Tier-2 LLM resolved escalated query in {llm_res.latency_ms:.1f} ms."
+                )
+                logger.info(f"Total end-to-end pipeline latency: {end_time:.1f} ms")
+                logger.info("=" * 70)
+
+                return PanelResponse(
+                    success=True,
+                    query=query,
+                    ticket_type=ticket_type,
+                    draft_resolution=draft_resolution,
+                    critic=critic_result,
+                    fallback_triggered=True,
+                    fallback_response=llm_res,
+                    final_output=llm_res.response,
+                    total_latency_ms=end_time,
+                )
+            else:
+                logger.error("=" * 70)
+                logger.error(
+                    f"[LLM Fallback FAILED] Tier-2 LLM was unable to resolve query: {llm_res.error}"
+                )
+                logger.error(f"Total end-to-end pipeline latency: {end_time:.1f} ms")
+                logger.error("=" * 70)
+
+                return PanelResponse(
+                    success=False,
+                    query=query,
+                    ticket_type=ticket_type,
+                    draft_resolution=draft_resolution,
+                    critic=critic_result,
+                    fallback_triggered=True,
+                    fallback_response=llm_res,
+                    final_output=None,
+                    error=f"Critic rejected draft ({critic_result.reason}) and LLM fallback failed: {llm_res.error}",
+                    total_latency_ms=end_time,
+                )
 
 
 # -----------------------------------------------------------------------------
@@ -544,6 +607,11 @@ def main() -> None:
         help="Critic model name in Groq (overrides CRITIC_MODEL).",
     )
     parser.add_argument(
+        "--no-fallback",
+        action="store_true",
+        help="Disable automatic escalation to Tier-2 LLM fallback upon critic rejection.",
+    )
+    parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
@@ -576,23 +644,38 @@ def main() -> None:
         config.groq_api_key = args.groq_key
     if args.critic_model:
         config.critic_model = args.critic_model
+    if args.no_fallback:
+        config.enable_llm_fallback = False
 
     result = run_panel(query=ticket_query, ticket_type=args.type, config=config)
 
     print("\n" + "=" * 50)
     print("SLM PANEL EXECUTION SUMMARY")
     print("=" * 50)
-    print(f"Status:            {'SUCCESS (Passed Critic)' if result.success else 'FAILED / HALTED'}")
+    if result.success and not result.fallback_triggered:
+        status_label = "SUCCESS (Passed Critic Fast-Path)"
+    elif result.success and result.fallback_triggered:
+        status_label = "SUCCESS (Escalated to LLM Fallback)"
+    else:
+        status_label = "FAILED / HALTED"
+
+    print(f"Status:            {status_label}")
     print(f"Total Latency:     {result.total_latency_ms:.1f} ms")
     if result.critic:
         print(f"Critic Gatekeeper: {'PASS' if result.critic.valid else 'FAIL'}")
         print(f"Critic Reason:     {result.critic.reason}")
+    if result.fallback_triggered:
+        print(f"Fallback Redirect: TRIGGERED (Tier-2 LLM)")
+        if result.fallback_response:
+            print(f"Fallback Model:    {result.fallback_response.model}")
+            print(f"Fallback Latency:  {result.fallback_response.latency_ms:.1f} ms")
     if result.error:
         print(f"Error Encountered: {result.error}")
 
     if result.success and result.final_output:
         print("\n" + "-" * 50)
-        print("FINAL USER-FACING RESOLUTION:")
+        source = "TIER-2 LLM (FALLBACK)" if result.fallback_triggered else "TIER-1 SLM (VERIFIED)"
+        print(f"FINAL USER-FACING RESOLUTION [{source}]:")
         print("-" * 50)
         print(result.final_output)
         sys.exit(0)

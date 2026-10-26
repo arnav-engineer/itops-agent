@@ -95,10 +95,11 @@ The **SLM Panel** serves as the autonomous execution engine for deterministic, s
    - The verified resolution is returned directly to the end user.
    - Total expected round-trip latency: **~1.0 to 1.5 seconds**.
 
-2. **Failure Path (`valid == false`)**:
-   - The ticket triggers the **Autonomous Safety Circuit Breaker**.
-   - The invalid draft is blocked from reaching the user.
-   - The failure event, critic reason, and ticket metadata are logged for auditability and routed to human Tier-2 engineers or the multi-hop diagnostic loop.
+2. **Failure & Redirection Path (`valid == false`)**:
+   - The ticket triggers the **Autonomous Safety Circuit Breaker**, blocking the drafted SLM resolution from reaching the user.
+   - The ticket is immediately redirected to the **Tier-2 LLM Panel** (`nvidia/nemotron-3-ultra-550b-a55b:free` via OpenRouter).
+   - If the LLM successfully resolves the escalated query, the comprehensive diagnostic resolution is delivered to the user.
+   - If the LLM fallback also fails or is explicitly disabled, execution halts and the incident is logged for human Tier-2 intervention.
 
 ---
 
@@ -120,6 +121,7 @@ The **SLM Panel** serves as the autonomous execution engine for deterministic, s
     - Autonomous circuit breaker: returns verified resolution on pass (`valid: true`), halts execution immediately on failure (`valid: false`).
     - Comprehensive step-by-step logging and dual CLI / programmatic API (`SLMPanel`, `run_panel`).
     - Automated unit test suite added in [`tests/test_panel.py`](../../../tests/test_panel.py).
+    - Integrated automatic Tier-2 LLM fallback (`process_multi_hop` via OpenRouter) upon Critic rejection, with configurable circuit-breaker bypass and full latency/token tracking.
 
 
 

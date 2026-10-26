@@ -58,8 +58,54 @@ class TestSLMPanel(unittest.TestCase):
         self.assertTrue(result.critic.valid)
         self.assertEqual(result.critic.reason, "Accurate and safe service restart.")
 
+    @patch("itops_agent.llm_panel.process_multi_hop")
     @patch("itops_agent.slm_panel.panel.requests.post")
-    def test_rejection_fail_flow(self, mock_post):
+    def test_rejection_redirects_to_llm_fallback(self, mock_slm_post, mock_llm_fallback):
+        # 1. Mock Generator (Ollama) returns ambiguous/poor command
+        mock_ollama_resp = MagicMock()
+        mock_ollama_resp.json.return_value = {
+            "message": {"content": "Try restarting some services."}
+        }
+        mock_ollama_resp.raise_for_status = MagicMock()
+
+        # 2. Mock Critic (Groq) rejects it
+        mock_groq_resp = MagicMock()
+        mock_groq_resp.json.return_value = {
+            "choices": [{
+                "message": {
+                    "content": '{"valid": false, "reason": "Too vague, does not fulfill specific ticket intent."}'
+                }
+            }]
+        }
+        mock_groq_resp.raise_for_status = MagicMock()
+
+        mock_slm_post.side_effect = [mock_ollama_resp, mock_groq_resp]
+
+        # 3. Mock LLM Panel (OpenRouter) returning detailed diagnostic resolution
+        from itops_agent.llm_panel import LLMResponse
+        mock_llm_fallback.return_value = LLMResponse(
+            success=True,
+            query="My application keeps crashing",
+            response="Step 1: Check application status with `systemctl status webapp`.",
+            model="nvidia/nemotron-3-ultra-550b-a55b:free",
+            latency_ms=850.0,
+            total_tokens=150,
+        )
+
+        cfg = PanelConfig(groq_api_key="mock_key")
+        result = run_panel("My application keeps crashing", config=cfg)
+
+        # Verified that rejection redirected to LLM fallback successfully
+        self.assertTrue(result.success)
+        self.assertTrue(result.fallback_triggered)
+        self.assertIsNotNone(result.critic)
+        self.assertFalse(result.critic.valid)
+        self.assertEqual(result.critic.reason, "Too vague, does not fulfill specific ticket intent.")
+        self.assertIsNotNone(result.final_output)
+        self.assertIn("systemctl status webapp", result.final_output)
+
+    @patch("itops_agent.slm_panel.panel.requests.post")
+    def test_rejection_fail_flow_with_fallback_disabled(self, mock_post):
         # 1. Mock Generator (Ollama) returns bad/destructive command
         mock_ollama_resp = MagicMock()
         mock_ollama_resp.json.return_value = {
@@ -80,10 +126,11 @@ class TestSLMPanel(unittest.TestCase):
 
         mock_post.side_effect = [mock_ollama_resp, mock_groq_resp]
 
-        cfg = PanelConfig(groq_api_key="mock_key")
+        cfg = PanelConfig(groq_api_key="mock_key", enable_llm_fallback=False)
         result = run_panel("Free disk space immediately", ticket_type="Request", config=cfg)
 
         self.assertFalse(result.success)
+        self.assertFalse(result.fallback_triggered)
         self.assertIsNone(result.final_output)
         self.assertIsNotNone(result.critic)
         self.assertFalse(result.critic.valid)
