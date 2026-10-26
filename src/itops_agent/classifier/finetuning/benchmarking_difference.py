@@ -29,14 +29,15 @@ CANDIDATE_WORK_DIRS = [
     Path("./laya_work")
 ]
 
-WORK_DIR = None
-for wd in CANDIDATE_WORK_DIRS:
-    if wd.exists():
-        WORK_DIR = wd
-        break
-if WORK_DIR is None:
-    WORK_DIR = REPO_ROOT / "laya_work"
-    WORK_DIR.mkdir(parents=True, exist_ok=True)
+def _resolve_work_dir() -> Path:
+    for wd in CANDIDATE_WORK_DIRS:
+        if wd.exists():
+            return wd
+    fallback = REPO_ROOT / "laya_work"
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
+
+WORK_DIR: Path = _resolve_work_dir()
 
 TEST_CASES_PATH = WORK_DIR / "test_cases.json"
 CKPT_DIR = WORK_DIR / "laya_finetuned_itops_complexity"
