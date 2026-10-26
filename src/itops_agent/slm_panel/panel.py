@@ -109,7 +109,7 @@ class PanelConfig:
 
     def __post_init__(self):
         # Fallback if environment was loaded or modified dynamically
-        if not self.groq_api_key:
+        if self.groq_api_key is None:
             self.groq_api_key = os.getenv("GROQ_API_KEY")
 
     def get_generator_prompt_path(self) -> Path:
