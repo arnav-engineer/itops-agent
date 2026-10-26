@@ -1,0 +1,88 @@
+{
+  "benchmark_name": "IT Operations Classification Head-to-Head Ablation",
+  "sample_count": 735,
+  "classes": [
+    "single_hop",
+    "multi_hop",
+    "parallel_hop"
+  ],
+  "base_metrics": {
+    "model_name": "Base Laya (Zero-Shot)",
+    "sample_count": 735,
+    "total_eval_time_sec": 20.62340521812439,
+    "accuracy": 0.6884353741496598,
+    "soft_accuracy": 0.5015172760254776,
+    "macro_f1": 0.39633675066270646,
+    "weighted_f1": 0.6237930205137531,
+    "brier_score": 0.4365998125501057,
+    "ece": 0.18921079177464806,
+    "latency_ms_mean": 28.02231354543604,
+    "latency_ms_p50": 28.134137999586528,
+    "latency_ms_p95": 32.014890100981575
+  },
+  "fine_tuned_metrics": {
+    "model_name": "Fine-Tuned Laya (RLCD)",
+    "sample_count": 735,
+    "total_eval_time_sec": 20.311391353607178,
+    "accuracy": 0.9537414965986395,
+    "soft_accuracy": 0.9243200162116859,
+    "macro_f1": 0.880677709379284,
+    "weighted_f1": 0.9531104825573128,
+    "brier_score": 0.082543684228746,
+    "ece": 0.011707176909303034,
+    "latency_ms_mean": 27.600826798672124,
+    "latency_ms_p50": 28.139027999714017,
+    "latency_ms_p95": 31.58562580174475
+  },
+  "summary_table": [
+    {
+      "Evaluation Metric": "Classification Accuracy",
+      "Base Laya (Zero-Shot)": "68.84%",
+      "Fine-Tuned Laya (RLCD)": "95.37%",
+      "Absolute Lift (\u0394)": "+26.53%",
+      "Relative Gain": "+38.5%"
+    },
+    {
+      "Evaluation Metric": "Macro F1-Score",
+      "Base Laya (Zero-Shot)": "0.3963",
+      "Fine-Tuned Laya (RLCD)": "0.8807",
+      "Absolute Lift (\u0394)": "+0.4843",
+      "Relative Gain": "+122.2%"
+    },
+    {
+      "Evaluation Metric": "Weighted F1-Score",
+      "Base Laya (Zero-Shot)": "0.6238",
+      "Fine-Tuned Laya (RLCD)": "0.9531",
+      "Absolute Lift (\u0394)": "+0.3293",
+      "Relative Gain": "+52.8%"
+    },
+    {
+      "Evaluation Metric": "Brier Score (Uncertainty)",
+      "Base Laya (Zero-Shot)": "0.4366",
+      "Fine-Tuned Laya (RLCD)": "0.0825",
+      "Absolute Lift (\u0394)": "-0.3541 (lower is better)",
+      "Relative Gain": "-81.1%"
+    },
+    {
+      "Evaluation Metric": "Expected Calibration Error (ECE)",
+      "Base Laya (Zero-Shot)": "18.92%",
+      "Fine-Tuned Laya (RLCD)": "1.17%",
+      "Absolute Lift (\u0394)": "-17.75% (lower is better)",
+      "Relative Gain": "-93.8%"
+    },
+    {
+      "Evaluation Metric": "Inference Latency (p50)",
+      "Base Laya (Zero-Shot)": "28.1 ms",
+      "Fine-Tuned Laya (RLCD)": "28.1 ms",
+      "Absolute Lift (\u0394)": "+0.0 ms",
+      "Relative Gain": "~0% overhead"
+    },
+    {
+      "Evaluation Metric": "Inference Latency (p95)",
+      "Base Laya (Zero-Shot)": "32.0 ms",
+      "Fine-Tuned Laya (RLCD)": "31.6 ms",
+      "Absolute Lift (\u0394)": "-0.4 ms",
+      "Relative Gain": "~0% overhead"
+    }
+  ]
+}

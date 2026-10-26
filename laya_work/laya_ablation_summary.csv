@@ -1,0 +1,8 @@
+Evaluation Metric,Base Laya (Zero-Shot),Fine-Tuned Laya (RLCD),Absolute Lift (Δ),Relative Gain
+Classification Accuracy,68.84%,95.37%,+26.53%,+38.5%
+Macro F1-Score,0.3963,0.8807,+0.4843,+122.2%
+Weighted F1-Score,0.6238,0.9531,+0.3293,+52.8%
+Brier Score (Uncertainty),0.4366,0.0825,-0.3541 (lower is better),-81.1%
+Expected Calibration Error (ECE),18.92%,1.17%,-17.75% (lower is better),-93.8%
+Inference Latency (p50),28.1 ms,28.1 ms,+0.0 ms,~0% overhead
+Inference Latency (p95),32.0 ms,31.6 ms,-0.4 ms,~0% overhead
